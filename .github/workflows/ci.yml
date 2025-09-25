@@ -6,7 +6,12 @@ on:
 
 jobs:
   test:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      PYTHONPATH: .
     steps:
       - uses: actions/checkout@v4
 
@@ -15,15 +20,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install deps
+      - name: Install dependencies (locked)
         run: |
-          cd backend
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
           pip install -r requirements.lock
-          pip install pytest
 
-      - name: Run tests
-        run: |
-          cd backend
-          pytest -q
+      - name: Run pytest
+        run: pytest -q
