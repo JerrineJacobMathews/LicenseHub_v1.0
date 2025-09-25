@@ -1,0 +1,10 @@
+{
+  "75a635c5-dc59-4d98-8e1d-23c78558058c": {
+    "token": "75a635c5-dc59-4d98-8e1d-23c78558058c",
+    "customer_id": "demo-customer",
+    "product": "SERVEO",
+    "machine_fingerprint": "WIN10-ABC-12345",
+    "issued_at": "2025-09-25T17:11:22.844006+00:00",
+    "lease_until": "2025-09-28T17:11:22.844006+00:00"
+  }
+}
