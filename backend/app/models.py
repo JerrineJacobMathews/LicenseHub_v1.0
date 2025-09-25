@@ -42,3 +42,19 @@ class LeaseToken(BaseModel):
     machine_fingerprint: str
     issued_at: str
     lease_until: str
+
+# ----- Offline flow -----
+class OfflineRequest(BaseModel):
+    customer_id: str
+    product: str
+    machine_fingerprint: str
+    nonce: str
+    requested_at: str  # ISO 8601
+
+class Ticket(BaseModel):
+    request: OfflineRequest
+    lease_hours: int
+    signature: str  # HMAC-SHA256 base16 (hex)
+
+class TicketApplyRequest(BaseModel):
+    ticket: Ticket
