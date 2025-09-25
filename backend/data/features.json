@@ -1,0 +1,26 @@
+{
+  "SERVEO": [
+    {
+      "code": "CASE_MGMT",
+      "name": "Case Management",
+      "tier": "base"
+    },
+    {
+      "code": "SPARE_PARTS",
+      "name": "Spare Parts Catalog",
+      "tier": "pro"
+    }
+  ],
+  "MACHINE": [
+    {
+      "code": "BUILD_LICENSE",
+      "name": "Build Process License",
+      "tier": "base"
+    },
+    {
+      "code": "REMOTE_SUPPORT",
+      "name": "Remote Support",
+      "tier": "pro"
+    }
+  ]
+}

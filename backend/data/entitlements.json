@@ -1,0 +1,14 @@
+{
+  "demo-customer": {
+    "products": {
+      "SERVEO": [
+        "CASE_MGMT",
+        "SPARE_PARTS"
+      ],
+      "MACHINE": [
+        "BUILD_LICENSE"
+      ]
+    },
+    "expires": null
+  }
+}
