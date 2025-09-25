@@ -2,23 +2,39 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
+
+# Pydantic API models
 from .models import (
     Feature, Entitlements,
     ActivationRequest, ActivationResponse,
     ValidationRequest, ValidationResponse, LeaseToken,
     OfflineRequest, Ticket, TicketApplyRequest
 )
-from .storage import load_json, save_json
+
+# File storage still used ONLY for features.json
+from .storage import load_json
+
+# Security (API key) and crypto (Ed25519)
 from .security import require_api_key
 from .crypto import sign_offline_request, verify_ticket
 
-import logging, os
-logging.info("Loaded routes.py from: %s", __file__)
-
+# ---- NEW: DB layer imports ----
+from .db import SessionLocal
+from .crud import get_entitlements_blob, save_lease, get_lease
 
 router = APIRouter()
 
-def now_utc() -> datetime:
+# ---- helpers ----
+def get_db():
+    """Provide a SQLAlchemy session to each request and close it afterward."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def now_utc():
     return datetime.now(timezone.utc)
 
 def iso(dt: datetime) -> str:
@@ -27,10 +43,12 @@ def iso(dt: datetime) -> str:
 LEASE_HOURS = 72
 GRACE_HOURS = 24
 
+# ---- health ----
 @router.get("/health")
 def health():
     return {"ok": True}
 
+# ---- features: keep reading from JSON for now ----
 @router.get("/features/{product}", response_model=list[Feature])
 def get_features(product: str):
     data = load_json("features")
@@ -38,38 +56,35 @@ def get_features(product: str):
         raise HTTPException(status_code=404, detail="Unknown product")
     return data[product]
 
+# ---- entitlements: NOW from DB ----
 @router.get("/entitlements/{customer_id}", response_model=Entitlements)
-def get_entitlements(customer_id: str):
-    data = load_json("entitlements")
-    info = data.get(customer_id)
+def get_entitlements(customer_id: str, db: Session = Depends(get_db)):
+    info = get_entitlements_blob(db, customer_id)
     if not info:
         raise HTTPException(status_code=404, detail="Unknown customer_id")
     return info
 
 # ---------- Online activate/validate (protected) ----------
 @router.post("/licenses/activate", response_model=ActivationResponse, dependencies=[Depends(require_api_key)])
-def activate(req: ActivationRequest):
-    entitlements = load_json("entitlements")
-    customer = entitlements.get(req.customer_id)
+def activate(req: ActivationRequest, db: Session = Depends(get_db)):
+    customer = get_entitlements_blob(db, req.customer_id)
     if not customer:
         raise HTTPException(status_code=404, detail="Unknown customer_id")
-    if req.product not in customer.get("products", {}):
+    if req.product not in (customer.get("products") or {}):
         raise HTTPException(status_code=403, detail="Product not entitled for this customer")
 
     token = str(uuid4())
     issued = now_utc()
     lease_until = issued + timedelta(hours=LEASE_HOURS)
 
-    leases = load_json("leases")
-    leases[token] = LeaseToken(
+    save_lease(db, dict(
         token=token,
         customer_id=req.customer_id,
         product=req.product,
         machine_fingerprint=req.machine_fingerprint,
         issued_at=iso(issued),
         lease_until=iso(lease_until),
-    ).model_dump()
-    save_json("leases", leases)
+    ))
 
     return ActivationResponse(
         status="issued",
@@ -79,9 +94,8 @@ def activate(req: ActivationRequest):
     )
 
 @router.post("/licenses/validate", response_model=ValidationResponse, dependencies=[Depends(require_api_key)])
-def validate(req: ValidationRequest):
-    leases = load_json("leases")
-    info = leases.get(req.token)
+def validate(req: ValidationRequest, db: Session = Depends(get_db)):
+    info = get_lease(db, req.token)
     if not info:
         raise HTTPException(status_code=404, detail="Unknown or expired token")
 
@@ -138,12 +152,11 @@ def offline_request(req: ActivationRequest):
 
 # ---------- Server: issue a signed ticket (protected) ----------
 @router.post("/tickets/issue", response_model=Ticket, dependencies=[Depends(require_api_key)])
-def issue_ticket(off_req: OfflineRequest, lease_hours: int = LEASE_HOURS):
-    entitlements = load_json("entitlements")
-    customer = entitlements.get(off_req.customer_id)
+def issue_ticket(off_req: OfflineRequest, lease_hours: int = LEASE_HOURS, db: Session = Depends(get_db)):
+    customer = get_entitlements_blob(db, off_req.customer_id)
     if not customer:
         raise HTTPException(status_code=404, detail="Unknown customer_id")
-    if off_req.product not in customer.get("products", {}):
+    if off_req.product not in (customer.get("products") or {}):
         raise HTTPException(status_code=403, detail="Product not entitled for this customer")
 
     sig = sign_offline_request(off_req, lease_hours)
@@ -151,7 +164,7 @@ def issue_ticket(off_req: OfflineRequest, lease_hours: int = LEASE_HOURS):
 
 # ---------- Client: apply a ticket (no API key) ----------
 @router.post("/tickets/apply", response_model=ActivationResponse)
-def apply_ticket(payload: TicketApplyRequest):
+def apply_ticket(payload: TicketApplyRequest, db: Session = Depends(get_db)):
     ticket = payload.ticket
     if not verify_ticket(ticket):
         raise HTTPException(status_code=400, detail="Invalid ticket signature")
@@ -160,16 +173,14 @@ def apply_ticket(payload: TicketApplyRequest):
     issued = now_utc()
     lease_until = issued + timedelta(hours=ticket.lease_hours)
 
-    leases = load_json("leases")
-    leases[token] = LeaseToken(
+    save_lease(db, dict(
         token=token,
         customer_id=ticket.request.customer_id,
         product=ticket.request.product,
         machine_fingerprint=ticket.request.machine_fingerprint,
         issued_at=iso(issued),
         lease_until=iso(lease_until),
-    ).model_dump()
-    save_json("leases", leases)
+    ))
 
     return ActivationResponse(
         status="issued",
