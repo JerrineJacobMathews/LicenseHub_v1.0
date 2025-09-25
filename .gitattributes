@@ -1,0 +1,30 @@
+# ----- Normalize line endings -----
+# Store as LF in repo; convert to CRLF on Windows checkout.
+*           text=auto eol=lf
+
+# Windows-native scripts should use CRLF on checkout:
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Unix shell scripts should use LF:
+*.sh        text eol=lf
+
+# Code & config (LF in repo)
+*.py        text eol=lf
+*.pyi       text eol=lf
+*.toml      text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.json      text eol=lf
+*.md        text eol=lf
+Dockerfile  text eol=lf
+
+# Binary files (never touch line endings)
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.zip       binary
