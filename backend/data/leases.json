@@ -1,10 +1,10 @@
 {
-  "75a635c5-dc59-4d98-8e1d-23c78558058c": {
-    "token": "75a635c5-dc59-4d98-8e1d-23c78558058c",
+  "320fa3c6-a076-43fb-8842-4ac4075b4431": {
+    "token": "320fa3c6-a076-43fb-8842-4ac4075b4431",
     "customer_id": "demo-customer",
     "product": "SERVEO",
-    "machine_fingerprint": "WIN10-ABC-12345",
-    "issued_at": "2025-09-25T17:11:22.844006+00:00",
-    "lease_until": "2025-09-28T17:11:22.844006+00:00"
+    "machine_fingerprint": "X",
+    "issued_at": "2025-09-25T17:48:57.864464+00:00",
+    "lease_until": "2025-09-28T17:48:57.864464+00:00"
   }
 }

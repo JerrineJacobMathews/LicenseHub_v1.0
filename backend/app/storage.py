@@ -15,7 +15,6 @@ def load_json(name: str) -> Dict[str, Any]:
             return {}
         return json.loads(text)
     except json.JSONDecodeError:
-        # Fallback for empty/invalid files
         return {}
 
 def save_json(name: str, data: Dict[str, Any]) -> None:
