@@ -21,7 +21,10 @@ from .crypto import sign_offline_request, verify_ticket
 
 # ---- NEW: DB layer imports ----
 from .db import SessionLocal
-from .crud import get_entitlements_blob, save_lease, get_lease
+from .crud import (
+    get_entitlements_blob, save_lease, get_lease,
+    list_leases_for_customer, delete_lease, log_event
+)
 
 router = APIRouter()
 
@@ -47,6 +50,11 @@ GRACE_HOURS = 24
 @router.get("/health")
 def health():
     return {"ok": True}
+
+# to build audit details
+def audit_ts() -> str:
+    return iso(now_utc())
+
 
 # ---- features: keep reading from JSON for now ----
 @router.get("/features/{product}", response_model=list[Feature])
@@ -85,6 +93,18 @@ def activate(req: ActivationRequest, db: Session = Depends(get_db)):
         issued_at=iso(issued),
         lease_until=iso(lease_until),
     ))
+    
+        # audit
+    log_event(db, "activate", "api", {
+        "ts_iso": audit_ts(),
+        "customer_id": req.customer_id,
+        "product": req.product,
+        "machine_fingerprint": req.machine_fingerprint,
+        "token": token,
+        "lease_until": iso(lease_until),
+    })
+
+    db.commit() 
 
     return ActivationResponse(
         status="issued",
@@ -182,9 +202,62 @@ def apply_ticket(payload: TicketApplyRequest, db: Session = Depends(get_db)):
         lease_until=iso(lease_until),
     ))
 
+        # audit
+    log_event(db, "apply_ticket", "api", {
+        "ts_iso": audit_ts(),
+        "customer_id": ticket.request.customer_id,
+        "product": ticket.request.product,
+        "machine_fingerprint": ticket.request.machine_fingerprint,
+        "token": token,
+        "lease_until": iso(lease_until),
+    })
+
+    db.commit() 
+
+
     return ActivationResponse(
         status="issued",
         message=f"Offline lease token valid for {ticket.lease_hours} hours",
         token=token,
         lease_until=iso(lease_until),
     )
+
+
+
+# ---------- Admin: list leases for a customer (protected) ----------
+@router.get("/admin/leases/{customer_id}", dependencies=[Depends(require_api_key)])
+def admin_list_leases(customer_id: str, db: Session = Depends(get_db)):
+    # ensure customer exists (optional but nicer errors)
+    ent = get_entitlements_blob(db, customer_id)
+    if not ent:
+        raise HTTPException(status_code=404, detail="Unknown customer_id")
+    return {
+        "customer_id": customer_id,
+        "leases": list_leases_for_customer(db, customer_id)
+    }
+
+# ---------- Admin: revoke a lease token (protected) ----------
+@router.post("/admin/revoke/{token}", dependencies=[Depends(require_api_key)])
+def admin_revoke_token(token: str, db: Session = Depends(get_db)):
+    # get lease for audit
+    info = get_lease(db, token)
+    if not info:
+        raise HTTPException(status_code=404, detail="Unknown token")
+
+    deleted = delete_lease(db, token)
+    if deleted < 1:
+        raise HTTPException(status_code=404, detail="Token not found")
+
+    # audit
+    log_event(db, "revoke", "api", {
+        "ts_iso": audit_ts(),
+        "token": token,
+        "customer_id": info["customer_id"],
+        "product": info["product"],
+        "machine_fingerprint": info["machine_fingerprint"],
+    })
+
+    db.commit() 
+
+    return {"status": "revoked", "token": token}
+
